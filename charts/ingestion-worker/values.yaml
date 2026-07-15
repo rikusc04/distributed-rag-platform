@@ -1,0 +1,30 @@
+image:
+  repository: ""  # ECR URL, wired by CI
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 0  # KEDA controls actual replica count
+
+keda:
+  enabled: true
+  minReplicas: 0
+  maxReplicas: 50
+  queueName: ""       # set per-environment
+  awsRegion: us-east-1
+  messagesPerReplica: 5
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  # eks.amazonaws.com/role-arn wired by Terraform IRSA output
+  annotations: {}
+
+env:
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"

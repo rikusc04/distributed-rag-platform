@@ -1,0 +1,3 @@
+# Prometheus alert rules — SQS DLQ non-empty, error rate > 1%, tenant budget breach.
+# Populated in Week 4.
+groups: []

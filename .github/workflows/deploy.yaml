@@ -1,0 +1,34 @@
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [build-images]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-dev:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform -chdir=infra/environments/dev init
+      - run: terraform -chdir=infra/environments/dev apply -auto-approve
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+      - run: aws eks update-kubeconfig --name rag-platform-dev --region us-east-1
+      - run: helm dependency update charts/umbrella
+      - run: helm upgrade --install rag-platform charts/umbrella --namespace rag-platform --create-namespace

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mcp-gateway
+description: TypeScript MCP server exposing search / ask / list_sources over pgvector, with Redis semantic cache
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
