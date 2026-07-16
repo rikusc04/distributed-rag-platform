@@ -79,3 +79,29 @@ module "s3_sqs" {
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
 }
+
+module "rds" {
+  source                    = "../../modules/rds"
+  name_prefix               = local.name_prefix
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_security_group_id = module.eks.cluster_security_group_id
+}
+
+module "elasticache" {
+  source                    = "../../modules/elasticache"
+  name_prefix               = local.name_prefix
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_security_group_id = module.eks.cluster_security_group_id
+}
+
+module "iam" {
+  source                    = "../../modules/iam"
+  name_prefix               = local.name_prefix
+  oidc_provider_arn         = module.eks.oidc_provider_arn
+  oidc_provider_url         = module.eks.oidc_provider_url
+  ingestion_sqs_queue_arn   = module.s3_sqs.queue_arn
+  ingestion_docs_bucket_arn = module.s3_sqs.bucket_arn
+  db_master_user_secret_arn = module.rds.master_user_secret_arn
+}
