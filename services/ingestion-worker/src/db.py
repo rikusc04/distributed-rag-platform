@@ -47,7 +47,7 @@ def upsert_document(
         raise ValueError("chunks and embeddings length mismatch")
 
     with _connect(creds) as conn, conn.cursor() as cur:
-        cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
+        cur.execute("SELECT set_config('app.current_tenant', %s, true)", (tenant_id,))
 
         cur.execute(
             """

@@ -152,10 +152,6 @@ export async function startHttpServer(
   metrics: Metrics,
   listenPort: number,
 ): Promise<HttpServer> {
-  const mcp = makeMcp(deps);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await mcp.connect(transport);
-
   const mcpHandler: Handler = async (req, res) => {
     let tenantId: string;
     try {
@@ -170,6 +166,12 @@ export async function startHttpServer(
       throw err;
     }
 
+    // Stateless mode requires a fresh McpServer + transport per request:
+    // the transport rejects reuse (webStandardStreamableHttp.js:140), and the
+    // McpServer only tolerates one connected transport at a time.
+    const mcp = makeMcp(deps);
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await mcp.connect(transport);
     const body = await readBody(req);
     await tenantStore.run({ tenantId }, () => transport.handleRequest(req, res, body));
   };
@@ -182,8 +184,6 @@ export async function startHttpServer(
   return {
     close: async () => {
       await http.close();
-      await transport.close();
-      await mcp.close();
     },
   };
 }
