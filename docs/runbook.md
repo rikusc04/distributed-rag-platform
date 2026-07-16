@@ -39,6 +39,29 @@ aws eks update-kubeconfig --name rag-platform-dev --region us-east-1
 kubectl get nodes
 ```
 
+Apply DB migrations (pgvector + tenant/document/chunk tables):
+```
+./scripts/apply-migrations.sh
+```
+
+Install the Helm baseline (KEDA + kube-prometheus-stack):
+```
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install keda kedacore/keda -n keda --create-namespace --wait
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring --create-namespace \
+  --set grafana.adminPassword=admin \
+  --set prometheus.prometheusSpec.retention=7d --wait
+```
+
+Port-forward Grafana to view dashboards (default admin/admin):
+```
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+# then open http://localhost:3000
+```
+
 ## Tear the dev stack down (end of session)
 
 ```
