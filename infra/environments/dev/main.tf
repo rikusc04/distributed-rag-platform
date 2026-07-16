@@ -34,6 +34,8 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 variable "region" {
   type    = string
   default = "us-east-1"
@@ -65,4 +67,15 @@ module "eks" {
   cluster_name       = local.cluster_name
   private_subnet_ids = module.vpc.private_subnet_ids
   public_subnet_ids  = module.vpc.public_subnet_ids
+}
+
+module "ecr" {
+  source      = "../../modules/ecr"
+  name_prefix = local.name_prefix
+}
+
+module "s3_sqs" {
+  source      = "../../modules/s3-sqs"
+  name_prefix = local.name_prefix
+  account_id  = data.aws_caller_identity.current.account_id
 }
