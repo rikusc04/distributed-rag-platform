@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.70"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
   backend "s3" {
     bucket       = "rag-platform-tfstate-997985548040"
@@ -54,4 +58,11 @@ module "vpc" {
   source       = "../../modules/vpc"
   name_prefix  = local.name_prefix
   cluster_name = local.cluster_name
+}
+
+module "eks" {
+  source             = "../../modules/eks"
+  cluster_name       = local.cluster_name
+  private_subnet_ids = module.vpc.private_subnet_ids
+  public_subnet_ids  = module.vpc.public_subnet_ids
 }
