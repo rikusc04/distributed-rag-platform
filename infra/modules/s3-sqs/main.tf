@@ -1,6 +1,11 @@
 resource "aws_s3_bucket" "docs" {
   bucket = "${var.name_prefix}-docs-${var.account_id}"
 
+  # Dev-only: let `terraform destroy` wipe uploaded documents (and any
+  # non-current versions from the versioning config below) instead of
+  # requiring a manual `aws s3 rm --recursive` first.
+  force_destroy = true
+
   tags = {
     Name = "${var.name_prefix}-docs"
   }

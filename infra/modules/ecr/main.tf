@@ -4,6 +4,10 @@ resource "aws_ecr_repository" "this" {
   name                 = "${var.name_prefix}/${each.value}"
   image_tag_mutability = "IMMUTABLE"
 
+  # Dev-only: let `terraform destroy` remove the repo even if images
+  # (including untagged buildx attestation manifests) still live in it.
+  force_delete = true
+
   image_scanning_configuration {
     scan_on_push = true
   }
