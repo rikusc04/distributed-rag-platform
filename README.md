@@ -72,6 +72,9 @@ docs/               # Architecture, runbook
 - Multi-tenant MCP gateway with p95 query latency and cost-savings numbers from the semantic cache
 - End-to-end Terraform IaC (VPC, EKS, RDS, ElastiCache, S3, SQS) with Prometheus + Grafana + Tempo observability and GitHub Actions CI/CD
 
-## Running Locally
+## Running It Yourself
 
-TBD — see `docs/runbook.md` once Week 1 completes.
+- **First time?** Start with the detailed walkthrough: [`docs/getting-started.md`](docs/getting-started.md). Assumes zero cloud knowledge.
+- **Quick operator commands** (bring up, tear down, deploy, ingest): [`docs/runbook.md`](docs/runbook.md).
+- **Architecture deep-dive:** [`docs/architecture.md`](docs/architecture.md).
+- **Hit a bug?** Check [`docs/issues.md`](docs/issues.md) — running log of issues we've hit and fixes.
