@@ -9,11 +9,25 @@ terraform {
       version = "~> 5.70"
     }
   }
-  # backend "s3" { ... }  # configure once bootstrap bucket exists
+  backend "s3" {
+    bucket       = "rag-platform-tfstate-997985548040"
+    key          = "dev/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = {
+      Project     = var.project
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 variable "region" {

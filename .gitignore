@@ -4,7 +4,7 @@
 *.tfstate.*
 *.tfvars
 !example.tfvars
-.terraform.lock.hcl
+# NOTE: .terraform.lock.hcl SHOULD be committed (pins provider versions)
 crash.log
 crash.*.log
 
