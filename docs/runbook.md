@@ -137,7 +137,58 @@ Metrics land on `http://localhost:9090/metrics`.
 
 ## Connecting an MCP client
 
-TBD.
+The gateway speaks MCP over **Streamable HTTP**. Any MCP client that supports HTTP transport can connect; Claude Desktop (with the `mcp-remote` adapter) is the reference client.
+
+Every request must include `Authorization: Bearer <api-key>`. The key's sha256 is looked up in `api_keys`; the row's `tenant_id` scopes every DB read via row-level security.
+
+### Mint an API key for a tenant
+
+```
+# 1. Create a tenant if you don't have one
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -tAc "INSERT INTO tenants (name) VALUES ('demo') RETURNING id;"
+# -> paste the returned uuid as TENANT_ID
+
+# 2. Generate a random API key and store its hash
+RAW_KEY=$(openssl rand -hex 24)
+KEY_HASH=$(echo -n "$RAW_KEY" | shasum -a 256 | awk '{print $1}')
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -c "INSERT INTO api_keys (tenant_id, key_hash, label) VALUES ('$TENANT_ID', '$KEY_HASH', 'demo');"
+
+echo "Your API key (save it now, it won't be shown again): $RAW_KEY"
+```
+
+### Call the tools
+
+Quick smoke test from your laptop, once the gateway is exposed (via ALB, or `kubectl port-forward svc/mcp-gateway 8080:8080`):
+
+```
+# MCP initialize handshake
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer $RAW_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+
+# Then invoke a tool
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer $RAW_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"mitochondria","k":3}}}'
+```
+
+### Tools
+
+| Tool | Args | Returns |
+|---|---|---|
+| `search` | `query: string, k: number ≤ 20 (default 5)` | Top-k chunks by cosine similarity: `[{content, sourceName, score}]` |
+| `ask` | `question: string, k: number ≤ 20 (default 5)` | LLM answer grounded in the top-k chunks, plus the citations |
+| `list_sources` | (none) | Distinct document sources for the tenant, most recently ingested first |
+
+### Semantic cache
+
+The gateway keeps up to `CACHE_MAX_ENTRIES` (default 500) recent `(query_embedding, results)` pairs per tenant in Redis. On each query the gateway embeds the incoming text, cosine-compares against every cached embedding, and returns the cached result if the best score is above `CACHE_THRESHOLD` (default 0.95). Cache is keyed per tenant, so tenants can never see each other's cache. Cache hits/misses are exposed as `mcp_cache_hits_total` / `mcp_cache_misses_total`.
 
 ## Common failures
 

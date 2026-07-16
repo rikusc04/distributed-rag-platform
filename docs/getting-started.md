@@ -255,6 +255,37 @@ kubectl exec -n rag-platform deploy/psql-migrate -- \
 
 You should see a non-zero chunk count within ~10 seconds of the upload.
 
+### Query the documents via the MCP gateway
+
+The gateway speaks MCP over Streamable HTTP. Every request needs `Authorization: Bearer <key>`, and each key belongs to exactly one tenant.
+
+```bash
+# 1. Mint an API key for the tenant you just used
+RAW_KEY=$(openssl rand -hex 24)
+KEY_HASH=$(echo -n "$RAW_KEY" | shasum -a 256 | awk '{print $1}')
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -c "INSERT INTO api_keys (tenant_id, key_hash, label) VALUES ('$TENANT_ID', '$KEY_HASH', 'demo');"
+echo "API key (save this): $RAW_KEY"
+
+# 2. Reach the gateway from your laptop
+kubectl port-forward -n rag-platform svc/mcp-gateway 8080:8080 &
+
+# 3. Initialize the MCP session then call the search tool
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer $RAW_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer $RAW_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"mitochondria","k":3}}}'
+```
+
+The response should contain the chunk you uploaded, with a cosine-similarity `score` near 1.0. See `docs/runbook.md` for the full tool list (`search`, `ask`, `list_sources`) and the semantic-cache behavior.
+
 ## Step 8 — Tear it down at the end of your session
 
 This is the most important step for cost control.

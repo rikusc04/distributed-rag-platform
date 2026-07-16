@@ -4,7 +4,7 @@
 
 **Write side (ingestion):** users upload documents to S3 under a `tenant-<uuid>/` prefix. S3 event notifications drop a message onto the ingest SQS queue directly (no Lambda in between — S3 → SQS is a first-class integration). A fleet of Python workers running on EKS, autoscaled by KEDA on queue depth, long-polls the queue, downloads the doc, extracts text (PDF via `pypdf`, plain text as-is), chunks it into 1000-token windows with 100-token overlap using `tiktoken`, batch-embeds the chunks with OpenAI, and upserts the vectors into pgvector on RDS inside a single transaction that sets `app.current_tenant` so row-level security scopes every write.
 
-**Read side (query):** a TypeScript MCP server exposes tools (`search`, `ask`, `list_sources`) over the standard MCP protocol. Requests are authenticated by API key, tenant-isolated by row-level security on Postgres, rate-limited per tenant, and cached in Redis by query-embedding similarity.
+**Read side (query):** a TypeScript MCP server exposes tools (`search`, `ask`, `list_sources`) over the standard MCP Streamable HTTP protocol. Requests are authenticated by a Bearer API key (sha256-hashed and looked up in `api_keys`), tenant-isolated by row-level security on Postgres (`SET LOCAL app.current_tenant` per transaction), and cached in Redis using an in-memory cosine-similarity match against recent query embeddings — a "semantic" cache. Ranking uses pgvector's `<=>` operator against an HNSW index over 1536-dim OpenAI embeddings; `ask` grounds a `gpt-4o-mini` completion in the top-k retrieved chunks and returns both the answer and its citations.
 
 ## Data flow
 
@@ -45,8 +45,8 @@
 ## Observability
 
 - **Metrics (Prometheus):**
-  - Ingestion worker (already shipped): `ingest_messages_received_total`, `ingest_documents_ingested_total`, `ingest_documents_failed_total{reason}`, `ingest_chunks_written_total`, `ingest_embed_latency_seconds`, `ingest_document_latency_seconds`
-  - MCP gateway (planned): query latency (p50/95/99), cache hit rate, tokens spent, cost per tenant, active-request gauge for HPA
+  - Ingestion worker: `ingest_messages_received_total`, `ingest_documents_ingested_total`, `ingest_documents_failed_total{reason}`, `ingest_chunks_written_total`, `ingest_embed_latency_seconds`, `ingest_document_latency_seconds`
+  - MCP gateway: `mcp_queries_total{tool}`, `mcp_query_latency_seconds{tool}`, `mcp_cache_hits_total`, `mcp_cache_misses_total`, `mcp_embed_latency_seconds`, `mcp_pg_latency_seconds{op}`, `mcp_auth_failures_total{reason}`
 - **Dashboards (Grafana):** one per subsystem — ingestion, query, cluster health
 - **Tracing (Tempo via OTel):** end-to-end trace from MCP call → Postgres query → LLM API call
 - **Alerts:** budget breach (SNS + Grafana), SQS DLQ non-empty, error rate > 1%
