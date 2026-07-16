@@ -1,9 +1,41 @@
 image:
-  repository: ""  # ECR URL, wired by CI
+  repository: ""  # e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp-gateway
   tag: latest
   pullPolicy: IfNotPresent
 
 replicaCount: 2
+
+aws:
+  region: us-east-1
+
+# Non-secret runtime config. All host/name fields are required.
+config:
+  dbHost: ""
+  dbPort: 5432
+  dbName: ""
+  redisUrl: ""              # redis://host:6379 (elasticache primary endpoint)
+  embedModel: "text-embedding-3-small"
+  chatModel: "gpt-4o-mini"
+  embedDim: 1536
+  cacheThreshold: "0.95"
+  cacheMaxEntries: 500
+  cacheTtlSeconds: 3600
+  logLevel: info
+
+# Pre-create these Secrets in the release namespace:
+#   dbSecret must contain: DB_USER, DB_PASSWORD
+#   openaiSecret must contain: OPENAI_API_KEY
+dbSecret:
+  name: rag-platform-db
+openaiSecret:
+  name: openai-api-key
+
+# Free-form extra env vars, merged into the container's env list.
+env: {}
+
+service:
+  type: ClusterIP
+  port: 8080
 
 hpa:
   enabled: true
@@ -11,18 +43,15 @@ hpa:
   maxReplicas: 20
   targetCPUUtilizationPercentage: 70
 
-service:
-  type: ClusterIP
-  port: 8080
-
 ingress:
-  enabled: true
+  enabled: false     # off by default; requires AWS Load Balancer Controller installed
   className: alb
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
   hosts: []
+  # - host: mcp.example.com
 
 resources:
   requests:
@@ -34,7 +63,6 @@ resources:
 
 serviceAccount:
   create: true
+  name: ""
+  # eks.amazonaws.com/role-arn: <mcp-gateway IRSA role from terraform output>
   annotations: {}
-
-env:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"

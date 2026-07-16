@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestion-worker.fullname" . }}
+  labels:
+    {{- include "ingestion-worker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ingestion-worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ingestion-worker.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "ingestion-worker.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+      containers:
+        - name: worker
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: INGEST_QUEUE_URL
+              value: {{ required "config.queueUrl is required" .Values.config.queueUrl | quote }}
+            - name: DOCS_BUCKET
+              value: {{ required "config.bucketName is required" .Values.config.bucketName | quote }}
+            - name: DB_HOST
+              value: {{ required "config.dbHost is required" .Values.config.dbHost | quote }}
+            - name: DB_PORT
+              value: {{ .Values.config.dbPort | quote }}
+            - name: DB_NAME
+              value: {{ required "config.dbName is required" .Values.config.dbName | quote }}
+            - name: DB_SECRET_ARN
+              value: {{ required "config.dbSecretArn is required" .Values.config.dbSecretArn | quote }}
+            - name: OPENAI_EMBED_MODEL
+              value: {{ .Values.config.embedModel | quote }}
+            - name: EMBED_DIM
+              value: {{ .Values.config.embedDim | quote }}
+            - name: METRICS_PORT
+              value: "9090"
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.openaiSecret.name }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

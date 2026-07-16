@@ -218,18 +218,30 @@ kubectl create secret generic openai-api-key \
   -n rag-platform
 ```
 
-Then install via Helm (the umbrella chart wires the SQS queue URL, S3 bucket, and DB secret ARN from Terraform outputs into the pod's env):
+### Create the DB Secret
+
+The gateway reads DB credentials from a `rag-platform-db` Kubernetes Secret. Pull the credentials Terraform put in Secrets Manager and materialize them:
 
 ```bash
-# Get ECR URLs so Helm knows where to pull images from
-INGESTION_IMAGE=$(terraform output -json | jq -r '.ecr_repository_urls.value["ingestion-worker"]')
-GATEWAY_IMAGE=$(terraform output -json | jq -r '.ecr_repository_urls.value["mcp-gateway"]')
+cd infra/environments/dev
+SECRET_ARN=$(terraform output -raw postgres_secret_arn)
+CREDS=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text)
+kubectl create secret generic rag-platform-db \
+  -n rag-platform \
+  --from-literal=DB_USER=$(echo "$CREDS" | jq -r .username) \
+  --from-literal=DB_PASSWORD=$(echo "$CREDS" | jq -r .password)
+```
 
-helm dependency update ../../charts/umbrella
-helm upgrade --install rag-platform ../../charts/umbrella \
-  --namespace rag-platform --create-namespace \
-  --set ingestion.image.repository=$INGESTION_IMAGE \
-  --set gateway.image.repository=$GATEWAY_IMAGE
+### Install the umbrella chart
+
+`charts/umbrella/values.dev.yaml` has `<PLACEHOLDERS>` for the ECR image URLs, DB host, Redis endpoint, IRSA role ARNs, and everything else Terraform provisioned. Fill them from the outputs first — see `docs/runbook.md` for the full one-liners — then:
+
+```bash
+cd charts/umbrella
+helm dependency update
+helm upgrade --install rag-platform . \
+  -n rag-platform \
+  -f values.dev.yaml
 ```
 
 ### Verify ingestion end-to-end

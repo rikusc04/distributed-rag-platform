@@ -1,0 +1,9 @@
+dependencies:
+- name: ingestion-worker
+  repository: file://../ingestion-worker
+  version: 0.1.0
+- name: mcp-gateway
+  repository: file://../mcp-gateway
+  version: 0.1.0
+digest: sha256:de0f99d102ccddff7fd5d5854d233f94d1e1155d920b361b9f3515bd381f2988
+generated: "2026-07-16T11:38:29.230324-04:00"

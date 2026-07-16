@@ -1,0 +1,38 @@
+# Example dev values file. Every "<...>" placeholder maps to a terraform
+# output — see docs/runbook.md ("Deploy the applications") for the shell
+# one-liners that populate them.
+
+ingestion-worker:
+  image:
+    repository: "<ECR_INGESTION_URL>"        # from `terraform output -json ecr_repository_urls`
+    tag: latest
+  aws:
+    region: us-east-1
+  config:
+    queueUrl: "<INGEST_QUEUE_URL>"           # from `terraform output -raw ingest_queue_url`
+    bucketName: "<DOCS_BUCKET>"              # from `terraform output -raw docs_bucket`
+    dbHost: "<POSTGRES_HOST>"                # host portion of postgres_endpoint
+    dbPort: 5432
+    dbName: "<POSTGRES_DB_NAME>"             # from `terraform output -raw postgres_db_name`
+    dbSecretArn: "<POSTGRES_SECRET_ARN>"     # from `terraform output -raw postgres_secret_arn`
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "<INGESTION_WORKER_ROLE_ARN>"
+
+mcp-gateway:
+  image:
+    repository: "<ECR_GATEWAY_URL>"
+    tag: latest
+  aws:
+    region: us-east-1
+  config:
+    dbHost: "<POSTGRES_HOST>"
+    dbPort: 5432
+    dbName: "<POSTGRES_DB_NAME>"
+    redisUrl: "rediss://<REDIS_ENDPOINT>:6379"   # ElastiCache with TLS-in-transit
+  ingress:
+    enabled: true
+    hosts: []       # add { host: mcp.your-domain.com } once you have a certificate
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "<MCP_GATEWAY_ROLE_ARN>"

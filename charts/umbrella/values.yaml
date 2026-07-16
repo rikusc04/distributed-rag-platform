@@ -1,0 +1,33 @@
+# Umbrella defaults. `values.dev.yaml` (next to this file) holds a fully
+# populated example for the dev environment. In practice you'll render this
+# chart with `-f values.dev.yaml` after `helm dep update`.
+
+ingestion-worker:
+  image:
+    repository: ""
+    tag: latest
+  aws:
+    region: us-east-1
+  config:
+    queueUrl: ""
+    bucketName: ""
+    dbHost: ""
+    dbName: ""
+    dbSecretArn: ""
+  serviceAccount:
+    annotations: {}
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/rag-platform-dev-ingestion-worker
+
+mcp-gateway:
+  image:
+    repository: ""
+    tag: latest
+  aws:
+    region: us-east-1
+  config:
+    dbHost: ""
+    dbName: ""
+    redisUrl: ""
+  serviceAccount:
+    annotations: {}
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/rag-platform-dev-mcp-gateway

@@ -73,17 +73,75 @@ Takes ~10 min. The bootstrap S3 bucket + state file survive. Any container image
 
 ## Deploy application changes
 
-Build + push images (once we cut over `build-images.yaml` from `workflow_dispatch` to `push`):
+Build + push images (until we cut `build-images.yaml` back to `on: push`, run it manually):
 ```
 gh workflow run build-images
 ```
 
-Deploy via Helm:
+### One-time namespace + secrets setup
+
+Both services read secrets from pre-created Kubernetes Secrets so the Helm chart never touches Secrets Manager itself. Create them once, in the release namespace:
+
 ```
-aws eks update-kubeconfig --name rag-platform-dev --region us-east-1
-helm dependency update charts/umbrella
-helm upgrade --install rag-platform charts/umbrella \
-  --namespace rag-platform --create-namespace
+kubectl create namespace rag-platform
+
+# 1. OpenAI key (used by both services)
+kubectl create secret generic openai-api-key \
+  -n rag-platform \
+  --from-literal=OPENAI_API_KEY=sk-...
+
+# 2. DB creds for the gateway. Pulled from Secrets Manager (the ingestion
+#    worker fetches from SM directly; the gateway reads plain env vars).
+cd infra/environments/dev
+SECRET_ARN=$(terraform output -raw postgres_secret_arn)
+CREDS=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text)
+DB_USER=$(echo "$CREDS" | jq -r .username)
+DB_PASSWORD=$(echo "$CREDS" | jq -r .password)
+
+kubectl create secret generic rag-platform-db \
+  -n rag-platform \
+  --from-literal=DB_USER="$DB_USER" \
+  --from-literal=DB_PASSWORD="$DB_PASSWORD"
+```
+
+### Populate the values file
+
+`charts/umbrella/values.dev.yaml` has `<PLACEHOLDERS>` for every terraform-driven value. Fill them from the tf outputs:
+
+```
+cd infra/environments/dev
+ACCT=$(aws sts get-caller-identity --query Account --output text)
+
+terraform output -raw ingest_queue_url
+terraform output -raw docs_bucket
+terraform output -raw postgres_endpoint       # split host:port
+terraform output -raw postgres_db_name
+terraform output -raw postgres_secret_arn
+terraform output -raw redis_endpoint
+terraform output -json ecr_repository_urls
+terraform output -raw ingestion_worker_role_arn
+terraform output -raw mcp_gateway_role_arn
+```
+
+### Install the umbrella chart
+
+```
+cd charts/umbrella
+helm dependency update
+helm upgrade --install rag-platform . \
+  -n rag-platform \
+  -f values.dev.yaml
+```
+
+### Verify
+
+```
+kubectl get pods -n rag-platform
+kubectl get scaledobject,triggerauthentication -n rag-platform
+kubectl get svc,ingress,hpa -n rag-platform
+
+# Watch KEDA scale the worker up when a message arrives
+kubectl get deploy rag-platform-ingestion-worker -n rag-platform -w
 ```
 
 ## Ingesting a corpus

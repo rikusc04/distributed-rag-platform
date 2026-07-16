@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-gateway.fullname" . }}
+  labels:
+    {{- include "mcp-gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mcp-gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-gateway.selectorLabels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "mcp-gateway.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: gateway
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: DB_HOST
+              value: {{ required "config.dbHost is required" .Values.config.dbHost | quote }}
+            - name: DB_PORT
+              value: {{ .Values.config.dbPort | quote }}
+            - name: DB_NAME
+              value: {{ required "config.dbName is required" .Values.config.dbName | quote }}
+            - name: REDIS_URL
+              value: {{ required "config.redisUrl is required" .Values.config.redisUrl | quote }}
+            - name: OPENAI_EMBED_MODEL
+              value: {{ .Values.config.embedModel | quote }}
+            - name: OPENAI_CHAT_MODEL
+              value: {{ .Values.config.chatModel | quote }}
+            - name: EMBED_DIM
+              value: {{ .Values.config.embedDim | quote }}
+            - name: CACHE_THRESHOLD
+              value: {{ .Values.config.cacheThreshold | quote }}
+            - name: CACHE_MAX_ENTRIES
+              value: {{ .Values.config.cacheMaxEntries | quote }}
+            - name: CACHE_TTL_SECONDS
+              value: {{ .Values.config.cacheTtlSeconds | quote }}
+            - name: LISTEN_PORT
+              value: "8080"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.dbSecret.name }}
+            - secretRef:
+                name: {{ .Values.openaiSecret.name }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -1,0 +1,14 @@
+{{- if .Values.keda.enabled -}}
+# KEDA needs to authenticate to AWS to poll the SQS queue depth.
+# `podIdentityOwner: aws` tells KEDA to reuse the ServiceAccount's IRSA
+# role — no long-lived access keys anywhere.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "ingestion-worker.fullname" . }}-aws
+  labels:
+    {{- include "ingestion-worker.labels" . | nindent 4 }}
+spec:
+  podIdentity:
+    provider: aws
+{{- end }}
