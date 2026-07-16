@@ -1,5 +1,4 @@
-# Dev environment root — wires together modules from ../../modules.
-# Week 1: implement VPC → EKS → RDS → ElastiCache → S3/SQS → ECR → IAM/IRSA.
+# Dev environment root. Wires modules from ../../modules into a single environment.
 
 terraform {
   required_version = ">= 1.9"

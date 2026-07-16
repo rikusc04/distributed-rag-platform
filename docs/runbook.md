@@ -73,7 +73,7 @@ S3 → SQS notification is wired; the ingest queue will pick it up and workers w
 
 ## Connecting an MCP client
 
-TBD (Week 2)
+TBD.
 
 ## Common failures
 

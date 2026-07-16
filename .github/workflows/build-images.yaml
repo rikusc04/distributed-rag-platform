@@ -1,7 +1,7 @@
 name: build-images
 
-# Manual-only until AWS is provisioned in Week 1.
-# Once AWS_CI_ROLE_ARN and ECR repos exist, switch back to `push: branches: [main]`.
+# Manual-only until the CI OIDC role and ECR repos exist.
+# Once AWS_CI_ROLE_ARN is set as a repo secret, switch back to `push: branches: [main]`.
 on:
   workflow_dispatch:
 

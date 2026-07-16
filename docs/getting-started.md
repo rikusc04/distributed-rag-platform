@@ -206,9 +206,9 @@ kubectl get nodes
 
 You should see 2 nodes in `Ready` state. This proves your cluster is up and kubectl is talking to it.
 
-## Step 7 — (Coming in Week 2) Deploy the applications
+## Step 7 — Deploy the applications
 
-_This section will be filled in as Week 2 wraps up. Placeholder:_
+_This section will be filled in once the umbrella Helm chart is populated. Placeholder:_
 
 ```bash
 # Get ECR URLs so Helm knows where to pull images from

@@ -1,8 +1,8 @@
-// MCP gateway entrypoint. Filled in during Week 2.
+// MCP gateway entrypoint.
 // Exposes tools: search(query, k), ask(question), list_sources().
 
 async function main(): Promise<void> {
-  throw new Error("Week 2: register MCP server and tools");
+  throw new Error("MCP server registration not implemented yet");
 }
 
 main().catch((err) => {

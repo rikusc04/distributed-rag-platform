@@ -59,12 +59,15 @@ observability/      # Grafana dashboards, Prometheus alerts
 docs/               # Architecture, runbook
 ```
 
-## Roadmap
+## Capabilities
 
-- **Week 1 — Foundation:** Terraform bootstrap (VPC, EKS, RDS, ElastiCache, S3, SQS, ECR, IRSA). Helm baseline (kube-prometheus-stack, Grafana, ALB controller, KEDA). CI builds/pushes images. Ingestion worker MVP: S3 → SQS → chunk → embed → pgvector.
-- **Week 2 — MCP Gateway:** TypeScript MCP server (`search`, `ask`, `list_sources`). API-key auth, `tenant_id` propagation, Postgres RLS, per-tenant token-bucket rate limiter. End-to-end demo from Claude Desktop.
-- **Week 3 — Autoscaling + Cache + Observability:** KEDA `ScaledObject` on SQS depth, Redis semantic cache, Prometheus metrics, 3 Grafana dashboards, OTel tracing to Tempo.
-- **Week 4 — Cost tracking, load test, ship:** Per-tenant LLM cost meter + SNS budget alerts, k6 load test, big real-corpus ingest, README polish, Loom demo.
+- **Infrastructure as code:** every AWS resource (VPC, EKS, RDS, ElastiCache, S3, SQS, ECR, IAM) is provisioned by Terraform. Two-step bootstrap; single `terraform apply` brings the environment up.
+- **Autoscaled ingestion:** KEDA scales Python workers 0→N based on SQS queue depth. Uploads land in S3 → notification triggers SQS → workers chunk, embed, and upsert to pgvector.
+- **Multi-tenant MCP gateway:** TypeScript server exposes `search`, `ask`, `list_sources` over the standard MCP protocol. API-key auth, per-tenant rate limiting, tenant isolation enforced by Postgres row-level security.
+- **Semantic caching:** Redis-backed embedding-similarity cache in front of the LLM, cutting cost and latency on repeat queries.
+- **Observability:** Prometheus metrics, three Grafana dashboards (ingestion / query / cluster), OpenTelemetry traces to Tempo.
+- **CI/CD:** GitHub Actions runs lint + typecheck + tests on every push, builds container images to ECR, and deploys via `terraform apply` + `helm upgrade`.
+- **Cost controls:** per-tenant LLM cost meter, SNS budget alerts, ECR lifecycle policy.
 
 ## Success Criteria (resume bullets)
 

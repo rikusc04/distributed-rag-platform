@@ -102,4 +102,55 @@ followed by the commit not happening.
 
 ---
 
+---
+
+## Issue #8 — AWS Free Plan silently blocks non-Free-Tier EC2 instance types
+
+**When:** first `terraform apply` bringing up the full dev stack
+**Symptom:** EKS node group stuck in `CREATING` for 20+ minutes. Terraform just kept printing `Still creating...`. EKS reported no health issues. After digging into the ASG's scaling activities:
+```
+"Could not launch On-Demand Instances. InvalidParameterCombination -
+The specified instance type is not eligible for Free Tier."
+```
+**Cause:** The **new AWS Free Plan** (launched 2025) blocks any EC2 launches that aren't Free-Tier-eligible — only `t3.micro` qualifies. This is different from the old Free Tier, which let you launch anything but only certain types were free. On the new plan, non-eligible instance types get flat-out rejected. So `t3.medium` (our node type) was refused.
+
+The problem was silent because EKS's node-group `health.issues` didn't surface the ASG-level failure — it just kept the node group in `CREATING` while the ASG kept retrying.
+**Solution:**
+1. Sign in to AWS Console **as root user** (IAM users can't do this by default) and click **Upgrade plan** in the Cost and usage widget. Add a payment method. Any signup credits still apply to your bill first — no out-of-pocket cost until credits run out.
+2. Delete the stuck node group: `aws eks delete-nodegroup --cluster-name … --nodegroup-name …`
+3. Re-run `terraform apply` — Terraform detects the missing node group and recreates it, this time successfully.
+
+**How to debug this fast if it happens again:** always check the ASG activities, not just EKS status:
+```bash
+ASG=$(aws eks describe-nodegroup --cluster-name <cluster> --nodegroup-name <ng> \
+      --query "nodegroup.resources.autoScalingGroups[0].name" --output text)
+aws autoscaling describe-scaling-activities --auto-scaling-group-name "$ASG" \
+      --query "Activities[*].[StatusCode,StatusMessage]"
+```
+
+---
+
+---
+
+## Issue #9 — RDS: `Cannot find version 16.6 for postgres`
+
+**When:** second `terraform apply` (after Free-Plan upgrade). EKS and ElastiCache created cleanly; RDS creation failed.
+**Symptom:**
+```
+Error: creating RDS DB Instance (rag-platform-dev-postgres): api error
+  InvalidParameterCombination: Cannot find version 16.6 for postgres
+```
+**Cause:** RDS doesn't offer every minor Postgres version — I'd hardcoded `engine_version = "16.6"` which doesn't exist in the RDS catalog. Available Postgres 16 versions at the time: 16.3, 16.4, 16.9, 16.10, 16.11, 16.12, 16.13, 16.14.
+**Solution:** Query what's actually available and pin to a real version:
+```bash
+aws rds describe-db-engine-versions --engine postgres --region us-east-1 \
+  --query "DBEngineVersions[?starts_with(EngineVersion, '16.') && Status=='available'].EngineVersion" \
+  --output text
+```
+Then update `infra/modules/rds/variables.tf` default to a real version (used `16.14`). Terraform's next apply picks it up on the retry.
+
+**How to avoid:** don't guess Postgres minor versions — always query first, or use just the major version if the AWS provider supports it (some do accept `"16"` and pick a default).
+
+---
+
 _Add new issues below as we hit them. Format: `## Issue #N — short title`, then `When / Symptom / Cause / Solution`._

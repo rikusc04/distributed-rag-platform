@@ -20,7 +20,7 @@ variable "cluster_security_group_id" {
 
 variable "engine_version" {
   type        = string
-  default     = "16.6"
+  default     = "16.14"
   description = "PostgreSQL major.minor version. pgvector is available on 15+; keep on 16.x"
 }
 
