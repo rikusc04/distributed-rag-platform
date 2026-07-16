@@ -5,6 +5,9 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 dependencies:
+  - name: common
+    version: "0.1.0"
+    repository: "file://../common"
   - name: ingestion-worker
     version: "0.1.0"
     repository: "file://../ingestion-worker"

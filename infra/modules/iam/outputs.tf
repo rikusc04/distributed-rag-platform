@@ -1,10 +1,10 @@
 output "ingestion_worker_role_arn" {
-  value       = aws_iam_role.ingestion_worker.arn
+  value       = aws_iam_role.workload["ingestion-worker"].arn
   description = "IRSA role ARN to annotate on the ingestion-worker ServiceAccount"
 }
 
 output "mcp_gateway_role_arn" {
-  value       = aws_iam_role.mcp_gateway.arn
+  value       = aws_iam_role.workload["mcp-gateway"].arn
   description = "IRSA role ARN to annotate on the mcp-gateway ServiceAccount"
 }
 

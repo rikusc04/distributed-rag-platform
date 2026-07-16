@@ -4,3 +4,6 @@ description: TypeScript MCP server exposing search / ask / list_sources over pgv
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+# `common.*` helpers are supplied by the sibling `common` library chart. When
+# rendered under the umbrella (as it is in practice), that chart's defines are
+# in the global template namespace and visible here.

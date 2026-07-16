@@ -14,6 +14,8 @@ import { AuthError, parseBearer, resolveTenant } from "./auth.js";
 import type { Metrics } from "./metrics.js";
 import { ToolDeps, ask, listSources, search } from "./tools.js";
 
+type Handler = (req: IncomingMessage, res: ServerResponse) => Promise<void> | void;
+
 interface TenantContext {
   tenantId: string;
 }
@@ -26,6 +28,53 @@ function requireTenant(): string {
     throw new Error("no tenant in context — auth middleware did not run");
   }
   return ctx.tenantId;
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(body));
+}
+
+const healthz: Handler = (_req, res) => sendJson(res, 200, { ok: true });
+
+export interface HttpServer {
+  close(): Promise<void>;
+}
+
+// Single Node http.Server factory used by both the MCP-facing server (:8080)
+// and the Prometheus scrape target (:9090). Routes match on the exact
+// request path (query strings stripped); anything unmatched returns 404, and
+// any thrown error becomes a 500.
+function makeHttpServer(
+  logger: Logger,
+  label: string,
+  port: number,
+  routes: Record<string, Handler>,
+): HttpServer {
+  const server = createServer(async (req, res) => {
+    try {
+      const path = req.url ? req.url.split("?", 1)[0] : "";
+      const handler = routes[path];
+      if (handler) {
+        await handler(req, res);
+        return;
+      }
+      sendJson(res, 404, { error: "not found" });
+    } catch (err) {
+      logger.error({ err }, `${label} handler error`);
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: "internal error" });
+      }
+    }
+  });
+  server.listen(port, () => logger.info({ port }, `${label} listening`));
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      }),
+  };
 }
 
 function makeMcp(deps: ToolDeps): McpServer {
@@ -97,16 +146,6 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   return JSON.parse(raw);
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify(body));
-}
-
-export interface HttpServer {
-  close(): Promise<void>;
-}
-
 export async function startHttpServer(
   deps: ToolDeps,
   logger: Logger,
@@ -117,49 +156,32 @@ export async function startHttpServer(
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await mcp.connect(transport);
 
-  const server = createServer(async (req, res) => {
+  const mcpHandler: Handler = async (req, res) => {
+    let tenantId: string;
     try {
-      if (req.method === "GET" && req.url === "/healthz") {
-        sendJson(res, 200, { ok: true });
-        return;
-      }
-
-      if (req.url === "/mcp") {
-        let tenantId: string;
-        try {
-          const rawKey = parseBearer(req.headers.authorization);
-          tenantId = await resolveTenant(deps.db.pool, rawKey);
-        } catch (err) {
-          if (err instanceof AuthError) {
-            metrics.authFailures.labels(err.reason).inc();
-            sendJson(res, 401, { error: err.message });
-            return;
-          }
-          throw err;
-        }
-
-        const body = await readBody(req);
-        await tenantStore.run({ tenantId }, () => transport.handleRequest(req, res, body));
-        return;
-      }
-
-      sendJson(res, 404, { error: "not found" });
+      const rawKey = parseBearer(req.headers.authorization);
+      tenantId = await resolveTenant(deps.db.pool, rawKey);
     } catch (err) {
-      logger.error({ err }, "unhandled request error");
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: "internal error" });
+      if (err instanceof AuthError) {
+        metrics.authFailures.labels(err.reason).inc();
+        sendJson(res, 401, { error: err.message });
+        return;
       }
+      throw err;
     }
-  });
 
-  await new Promise<void>((resolve) => {
-    server.listen(listenPort, () => resolve());
+    const body = await readBody(req);
+    await tenantStore.run({ tenantId }, () => transport.handleRequest(req, res, body));
+  };
+
+  const http = makeHttpServer(logger, "mcp gateway", listenPort, {
+    "/healthz": healthz,
+    "/mcp": mcpHandler,
   });
-  logger.info({ port: listenPort }, "mcp gateway listening");
 
   return {
     close: async () => {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await http.close();
       await transport.close();
       await mcp.close();
     },
@@ -167,24 +189,14 @@ export async function startHttpServer(
 }
 
 export function startMetricsServer(metrics: Metrics, logger: Logger, port: number): HttpServer {
-  const server = createServer(async (req, res) => {
-    if (req.method === "GET" && req.url === "/metrics") {
-      res.statusCode = 200;
-      res.setHeader("Content-Type", metrics.registry.contentType);
-      res.end(await metrics.registry.metrics());
-      return;
-    }
-    if (req.method === "GET" && req.url === "/healthz") {
-      sendJson(res, 200, { ok: true });
-      return;
-    }
-    sendJson(res, 404, { error: "not found" });
-  });
-  server.listen(port, () => logger.info({ port }, "metrics server listening"));
-  return {
-    close: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      }),
+  const metricsHandler: Handler = async (_req, res) => {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", metrics.registry.contentType);
+    res.end(await metrics.registry.metrics());
   };
+
+  return makeHttpServer(logger, "metrics server", port, {
+    "/healthz": healthz,
+    "/metrics": metricsHandler,
+  });
 }

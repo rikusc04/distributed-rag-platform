@@ -1,0 +1,5 @@
+apiVersion: v2
+name: common
+description: Shared Helm helpers (naming, labels, ServiceAccount) reused by ingestion-worker and mcp-gateway
+type: library
+version: 0.1.0

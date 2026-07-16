@@ -11,7 +11,9 @@
 
 import { Redis } from "ioredis";
 
-export interface CachedSearchResult {
+// Also used by tools.ts as the shape returned from `search`. Kept here
+// because cache.ts is the deeper module and this avoids an import cycle.
+export interface SearchResult {
   content: string;
   sourceName: string;
   score: number;
@@ -19,7 +21,7 @@ export interface CachedSearchResult {
 
 interface CacheEntry {
   embedding: number[];
-  results: CachedSearchResult[];
+  results: SearchResult[];
 }
 
 export function cosine(a: number[], b: number[]): number {
@@ -78,7 +80,7 @@ export class SemanticCache {
     return `q-cache:${tenantId}`;
   }
 
-  async lookup(tenantId: string, embedding: number[]): Promise<CachedSearchResult[] | null> {
+  async lookup(tenantId: string, embedding: number[]): Promise<SearchResult[] | null> {
     const raw = await this.redis.lrange(this.key(tenantId), 0, -1);
     const entries: CacheEntry[] = [];
     for (const item of raw) {
@@ -99,7 +101,7 @@ export class SemanticCache {
   async store(
     tenantId: string,
     embedding: number[],
-    results: CachedSearchResult[],
+    results: SearchResult[],
   ): Promise<void> {
     const entry: CacheEntry = { embedding, results };
     const payload = JSON.stringify(entry);

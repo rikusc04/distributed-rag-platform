@@ -5,11 +5,13 @@
 import OpenAI from "openai";
 import pgvector from "pgvector/utils";
 
-import type { CachedSearchResult, SemanticCache } from "./cache.js";
+import { SearchResult, SemanticCache } from "./cache.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import type { Embedder } from "./embedder.js";
 import type { Metrics } from "./metrics.js";
+
+export type { SearchResult };
 
 export interface ToolDeps {
   cfg: Config;
@@ -20,12 +22,6 @@ export interface ToolDeps {
   openai: OpenAI;
 }
 
-export interface SearchResult {
-  content: string;
-  sourceName: string;
-  score: number;
-}
-
 export interface AskResult {
   answer: string;
   citations: SearchResult[];
@@ -34,6 +30,25 @@ export interface AskResult {
 export interface Source {
   sourceName: string;
   ingestedAt: string;
+}
+
+export type ToolName = "search" | "ask" | "list_sources";
+
+// Wraps an async tool call with the outer metrics pair (counter + latency
+// histogram) that every tool has to record. The inner work is timed in
+// wall-clock seconds regardless of success or failure.
+async function timed<T>(
+  deps: ToolDeps,
+  tool: ToolName,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await fn();
+  } finally {
+    deps.metrics.queriesTotal.labels(tool).inc();
+    deps.metrics.queryLatency.labels(tool).observe((performance.now() - start) / 1000);
+  }
 }
 
 async function embedAndSearch(
@@ -82,28 +97,17 @@ async function embedAndSearch(
     });
   }
 
-  const cacheable: CachedSearchResult[] = [];
-  for (const r of shaped) {
-    cacheable.push({ content: r.content, sourceName: r.sourceName, score: r.score });
-  }
-  await deps.cache.store(tenantId, embedding, cacheable);
-
+  await deps.cache.store(tenantId, embedding, shaped);
   return shaped;
 }
 
-export async function search(
+export function search(
   deps: ToolDeps,
   tenantId: string,
   query: string,
   k: number,
 ): Promise<SearchResult[]> {
-  const start = performance.now();
-  try {
-    return await embedAndSearch(deps, tenantId, query, k);
-  } finally {
-    deps.metrics.queriesTotal.labels("search").inc();
-    deps.metrics.queryLatency.labels("search").observe((performance.now() - start) / 1000);
-  }
+  return timed(deps, "search", () => embedAndSearch(deps, tenantId, query, k));
 }
 
 const ASK_SYSTEM_PROMPT = [
@@ -122,20 +126,16 @@ function buildContext(chunks: SearchResult[]): string {
   return parts.join("\n\n");
 }
 
-export async function ask(
+export function ask(
   deps: ToolDeps,
   tenantId: string,
   question: string,
   k: number,
 ): Promise<AskResult> {
-  const start = performance.now();
-  try {
+  return timed(deps, "ask", async () => {
     const citations = await embedAndSearch(deps, tenantId, question, k);
     if (citations.length === 0) {
-      return {
-        answer: "No indexed context matches this question yet.",
-        citations: [],
-      };
+      return { answer: "No indexed context matches this question yet.", citations: [] };
     }
 
     const completion = await deps.openai.chat.completions.create({
@@ -152,16 +152,12 @@ export async function ask(
 
     const answer = completion.choices[0]?.message?.content ?? "";
     return { answer, citations };
-  } finally {
-    deps.metrics.queriesTotal.labels("ask").inc();
-    deps.metrics.queryLatency.labels("ask").observe((performance.now() - start) / 1000);
-  }
+  });
 }
 
-export async function listSources(deps: ToolDeps, tenantId: string): Promise<Source[]> {
-  const start = performance.now();
-  try {
-    return await deps.db.withTenant(tenantId, async (client) => {
+export function listSources(deps: ToolDeps, tenantId: string): Promise<Source[]> {
+  return timed(deps, "list_sources", () =>
+    deps.db.withTenant(tenantId, async (client) => {
       const res = await client.query<{ source_name: string; ingested_at: string }>(
         `SELECT source_name,
                 MAX(ingested_at) AS ingested_at
@@ -175,9 +171,6 @@ export async function listSources(deps: ToolDeps, tenantId: string): Promise<Sou
         sources.push({ sourceName: row.source_name, ingestedAt: row.ingested_at });
       }
       return sources;
-    });
-  } finally {
-    deps.metrics.queriesTotal.labels("list_sources").inc();
-    deps.metrics.queryLatency.labels("list_sources").observe((performance.now() - start) / 1000);
-  }
+    }),
+  );
 }
