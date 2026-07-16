@@ -44,3 +44,14 @@ variable "environment" {
   type    = string
   default = "dev"
 }
+
+locals {
+  name_prefix  = "${var.project}-${var.environment}"
+  cluster_name = "${var.project}-${var.environment}"
+}
+
+module "vpc" {
+  source       = "../../modules/vpc"
+  name_prefix  = local.name_prefix
+  cluster_name = local.cluster_name
+}
