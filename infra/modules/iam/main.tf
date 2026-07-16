@@ -9,7 +9,8 @@
 locals {
   roles = {
     "ingestion-worker" = {
-      sa_name = var.ingestion_worker_sa_name
+      namespace = var.service_account_namespace
+      sa_name   = var.ingestion_worker_sa_name
       statements = [
         {
           sid       = "SqsConsume"
@@ -29,12 +30,26 @@ locals {
       ]
     }
     "mcp-gateway" = {
-      sa_name = var.mcp_gateway_sa_name
+      namespace = var.service_account_namespace
+      sa_name   = var.mcp_gateway_sa_name
       statements = [
         {
           sid       = "SecretsRead"
           actions   = ["secretsmanager:GetSecretValue"]
           resources = [var.db_master_user_secret_arn]
+        },
+      ]
+    }
+    # KEDA operator lives in its own namespace (from the upstream Helm chart)
+    # and only needs to read the ingest queue's depth to drive the scaler.
+    "keda-operator" = {
+      namespace = "keda"
+      sa_name   = "keda-operator"
+      statements = [
+        {
+          sid       = "SqsReadDepth"
+          actions   = ["sqs:GetQueueAttributes"]
+          resources = [var.ingestion_sqs_queue_arn]
         },
       ]
     }
@@ -62,7 +77,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "${var.oidc_provider_url}:sub"
-      values   = ["system:serviceaccount:${var.service_account_namespace}:${each.value.sa_name}"]
+      values   = ["system:serviceaccount:${each.value.namespace}:${each.value.sa_name}"]
     }
   }
 }

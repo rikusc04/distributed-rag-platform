@@ -36,12 +36,12 @@ variable "service_account_namespace" {
 
 variable "ingestion_worker_sa_name" {
   type        = string
-  default     = "ingestion-worker"
+  default     = "rag-platform-ingestion-worker"
   description = "K8s ServiceAccount name for the ingestion worker"
 }
 
 variable "mcp_gateway_sa_name" {
   type        = string
-  default     = "mcp-gateway"
+  default     = "rag-platform-mcp-gateway"
   description = "K8s ServiceAccount name for the MCP gateway"
 }

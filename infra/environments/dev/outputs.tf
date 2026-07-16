@@ -57,3 +57,8 @@ output "mcp_gateway_role_arn" {
   value       = module.iam.mcp_gateway_role_arn
   description = "IRSA role to annotate on the mcp-gateway ServiceAccount"
 }
+
+output "keda_operator_role_arn" {
+  value       = module.iam.keda_operator_role_arn
+  description = "IRSA role to annotate on the keda-operator ServiceAccount (namespace: keda)"
+}

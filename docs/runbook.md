@@ -56,6 +56,16 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.retention=7d --wait
 ```
 
+Annotate the KEDA operator SA with its IRSA role so it can call `sqs:GetQueueAttributes`
+(without this, the SQS ScaledObject can't read queue depth and the worker never scales):
+
+```
+KEDA_ROLE=$(cd infra/environments/dev && terraform output -raw keda_operator_role_arn)
+kubectl annotate sa keda-operator -n keda \
+  eks.amazonaws.com/role-arn="$KEDA_ROLE" --overwrite
+kubectl rollout restart deploy keda-operator -n keda
+```
+
 Port-forward Grafana to view dashboards (default admin/admin):
 ```
 kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
