@@ -88,11 +88,52 @@ helm upgrade --install rag-platform charts/umbrella \
 
 ## Ingesting a corpus
 
+Object keys must be `tenant-<uuid>/<filename>` — the first path segment is the tenant id, and the worker drops any message whose key doesn't match. Create a tenant row first, then upload:
+
 ```
-aws s3 cp mydoc.pdf s3://rag-platform-dev-docs-<ACCOUNT_ID>/tenant-1/
+# 1. create a tenant and grab its uuid
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -c "INSERT INTO tenants (name) VALUES ('demo') RETURNING id;"
+TENANT_ID=<paste the uuid>
+
+# 2. upload a document
+aws s3 cp mydoc.pdf s3://rag-platform-dev-docs-<ACCOUNT_ID>/tenant-$TENANT_ID/mydoc.pdf
 ```
 
-S3 → SQS notification is wired; the ingest queue will pick it up and workers will chunk + embed + upsert to pgvector.
+S3 → SQS notification is wired; the ingest queue picks it up, KEDA scales a worker up from 0, the worker chunks + embeds + upserts to pgvector, then deletes the SQS message.
+
+Verify it landed:
+
+```
+# chunk count should be non-zero shortly after upload
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -c "SELECT count(*) FROM chunks WHERE tenant_id = '$TENANT_ID';"
+```
+
+## Running the ingestion worker locally
+
+Useful for debugging without a full `helm upgrade` cycle. Requires the dev stack to be up (so RDS/SQS/S3 exist) and your AWS creds configured.
+
+```
+cd services/ingestion-worker
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Populate env from terraform outputs
+export AWS_REGION=us-east-1
+export INGEST_QUEUE_URL=$(cd ../../infra/environments/dev && terraform output -raw ingest_queue_url)
+export DOCS_BUCKET=$(cd ../../infra/environments/dev && terraform output -raw docs_bucket_name)
+export DB_HOST=$(cd ../../infra/environments/dev && terraform output -raw postgres_endpoint | cut -d: -f1)
+export DB_NAME=$(cd ../../infra/environments/dev && terraform output -raw postgres_db_name)
+export DB_SECRET_ARN=$(cd ../../infra/environments/dev && terraform output -raw postgres_secret_arn)
+export OPENAI_API_KEY=<your key>
+
+# RDS is VPC-private, so from a laptop you need to port-forward through the EKS pod first
+# (see apply-migrations.sh for how it launches a pod inside the VPC)
+python -m src.main
+```
+
+Metrics land on `http://localhost:9090/metrics`.
 
 ## Connecting an MCP client
 
@@ -104,6 +145,8 @@ TBD.
 - **`apply` timed out on the EKS node group** — usually a subnet capacity issue; check that private subnets have IP space.
 - **`kubectl get nodes` returns Unauthorized** — re-run `aws eks update-kubeconfig`.
 - **`terraform destroy` refuses on the state bucket** — expected. Bootstrap has `prevent_destroy = true`. Only remove that line if you're wrapping up the whole project.
+- **Ingestion worker rejects a message with `s3 key missing tenant- prefix`** — the S3 key doesn't start with `tenant-<uuid>/`. The message is deleted from the queue on purpose (retrying can't help); re-upload with the correct prefix.
+- **Worker crashes with `embedding dim mismatch`** — the OpenAI model returned a vector whose length doesn't match `EMBED_DIM`. Either the model changed under you or the env var is wrong (`text-embedding-3-small` = 1536).
 
 ## Cost controls
 

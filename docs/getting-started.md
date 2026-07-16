@@ -208,20 +208,52 @@ You should see 2 nodes in `Ready` state. This proves your cluster is up and kube
 
 ## Step 7 — Deploy the applications
 
-_This section will be filled in once the umbrella Helm chart is populated. Placeholder:_
+The ingestion worker is a Python service that polls SQS, downloads uploaded documents from S3, chunks them, embeds each chunk with OpenAI, and upserts the vectors into pgvector on RDS. To run it end-to-end you need one extra secret:
+
+```bash
+# Store your OpenAI key in Kubernetes so the worker can read it
+kubectl create namespace rag-platform 2>/dev/null || true
+kubectl create secret generic openai-api-key \
+  --from-literal=OPENAI_API_KEY=sk-... \
+  -n rag-platform
+```
+
+Then install via Helm (the umbrella chart wires the SQS queue URL, S3 bucket, and DB secret ARN from Terraform outputs into the pod's env):
 
 ```bash
 # Get ECR URLs so Helm knows where to pull images from
 INGESTION_IMAGE=$(terraform output -json | jq -r '.ecr_repository_urls.value["ingestion-worker"]')
 GATEWAY_IMAGE=$(terraform output -json | jq -r '.ecr_repository_urls.value["mcp-gateway"]')
 
-# Install Helm baseline (kube-prometheus-stack, KEDA, ALB controller, cert-manager)
-# Then deploy the umbrella chart
 helm dependency update ../../charts/umbrella
 helm upgrade --install rag-platform ../../charts/umbrella \
   --namespace rag-platform --create-namespace \
-  --set global.imageRegistry=$ECR_REGISTRY
+  --set ingestion.image.repository=$INGESTION_IMAGE \
+  --set gateway.image.repository=$GATEWAY_IMAGE
 ```
+
+### Verify ingestion end-to-end
+
+Upload a small text file and confirm it becomes chunks in Postgres:
+
+```bash
+# Create a test tenant and grab the uuid
+TENANT_ID=$(kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -tAc "INSERT INTO tenants (name) VALUES ('demo') RETURNING id;")
+
+# Upload something small
+echo "The mitochondria is the powerhouse of the cell." > /tmp/demo.txt
+aws s3 cp /tmp/demo.txt s3://$(terraform output -raw docs_bucket_name)/tenant-$TENANT_ID/demo.txt
+
+# Watch the worker pick it up
+kubectl logs -n rag-platform -l app=ingestion-worker -f
+
+# Confirm chunks landed
+kubectl exec -n rag-platform deploy/psql-migrate -- \
+  psql -c "SELECT count(*) FROM chunks WHERE tenant_id = '$TENANT_ID';"
+```
+
+You should see a non-zero chunk count within ~10 seconds of the upload.
 
 ## Step 8 — Tear it down at the end of your session
 
