@@ -114,7 +114,7 @@ The specified instance type is not eligible for Free Tier."
 ```
 **Cause:** The **new AWS Free Plan** (launched 2025) blocks any EC2 launches that aren't Free-Tier-eligible — only `t3.micro` qualifies. This is different from the old Free Tier, which let you launch anything but only certain types were free. On the new plan, non-eligible instance types get flat-out rejected. So `t3.medium` (our node type) was refused.
 
-The problem was silent because EKS's node-group `health.issues` didn't surface the ASG-level failure — it just kept the node group in `CREATING` while the ASG kept retrying.
+The problem was silent because EKS's node-group `health.issues` didn't surface the ASG-level failure — it just kept the node group in `CREATING` while the ASG kept retrying.  
 **Solution:**
 1. Sign in to AWS Console **as root user** (IAM users can't do this by default) and click **Upgrade plan** in the Cost and usage widget. Add a payment method. Any signup credits still apply to your bill first — no out-of-pocket cost until credits run out.
 2. Delete the stuck node group: `aws eks delete-nodegroup --cluster-name … --nodegroup-name …`
