@@ -69,12 +69,6 @@ docs/               # Architecture, runbook
 - **CI/CD:** GitHub Actions runs lint + typecheck + tests on every push, builds container images to ECR, and deploys via `terraform apply` + `helm upgrade`.
 - **Cost controls:** per-tenant LLM cost meter, SNS budget alerts, ECR lifecycle policy.
 
-## Success Criteria (resume bullets)
-
-- Multi-tenant RAG platform on AWS EKS with KEDA autoscaling 0→N ingestion workers driven by SQS queue depth
-- Multi-tenant MCP gateway with p95 query latency and cost-savings numbers from the semantic cache
-- End-to-end Terraform IaC (VPC, EKS, RDS, ElastiCache, S3, SQS) with Prometheus + Grafana + Tempo observability and GitHub Actions CI/CD
-
 ## Running It Yourself
 
 - **First time?** Start with the detailed walkthrough: [`docs/getting-started.md`](docs/getting-started.md). Assumes zero cloud knowledge.
