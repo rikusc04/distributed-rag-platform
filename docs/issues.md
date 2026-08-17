@@ -150,3 +150,36 @@ aws rds describe-db-engine-versions --engine postgres --region us-east-1 \
 Then update `infra/modules/rds/variables.tf` default to a real version (used `16.14`). Terraform's next apply picks it up on the retry.
 
 **How to avoid:** don't guess Postgres minor versions — always query first, or use just the major version if the AWS provider supports it (some do accept `"16"` and pick a default).
+
+---
+
+## Issue #10 — Semantic cache does not skip chat completion on `ask`
+
+**When:** local benchmark of the MCP gateway (`bench/results/findings.md`)
+**Symptom:** With cache hit rate at ~99% on paraphrase workloads, `ask` p95 stayed at ~1.6 s and per-query LLM cost was unchanged.
+**Cause:** `services/mcp-gateway/src/tools.ts` `ask()` calls `openai.chat.completions.create` on every request. The `SemanticCache` in `cache.ts` only caches the retrieved chunk list, not the final answer. So a cache hit short-circuits the ~2 ms pg vector search but still pays for the ~1 s chat completion.
+**Solution (not yet applied):** wrap `openai.chat.completions.create` in a cache lookup keyed on `(tenantId, question embedding)`; cache the full `{answer, citations}` payload; short-circuit the chat call on hit. ~20 lines. After that, the observed hit rate translates directly to skipped chat completions.
+
+---
+
+## Issue #11 — Gateway `pg` pool hardcoded `ssl: { rejectUnauthorized: false }` — broke local docker postgres
+
+**When:** first attempt to run the gateway against the local docker stack for the benchmark.
+**Symptom:** `pg` client hung, then closed the connection with a TLS error — local postgres doesn't serve TLS.
+**Cause:** `services/mcp-gateway/src/db.ts` set `ssl: { rejectUnauthorized: false }` unconditionally, which forces TLS on every connection. Fine for RDS (which requires TLS); wrong for any postgres that doesn't offer it.
+**Solution:** gated on a `DB_SSL` env var — `ssl` is set only when `DB_SSL=true`. The Helm chart defaults `dbSsl: true`, so prod behavior is unchanged. Local `./scripts/dev-up.sh` runs the gateway with `DB_SSL=false`.
+
+---
+
+## Issue #12 — `z.coerce.boolean("false")` returns `true`
+
+**When:** first attempt to compare cache-ON vs cache-OFF in the benchmark. The "cache OFF" run showed a nearly identical p95 to cache ON. Digging into `/metrics` revealed the "cache OFF" run had 2667 cache hits — the flag was ignored.
+**Cause:** `cacheEnabled` was declared as `z.coerce.boolean().default(true)`. Zod's coerce path runs `Boolean(input)` on strings, and in JavaScript `Boolean("false")` is `true` (any non-empty string is truthy). So `CACHE_ENABLED=false` parsed as `true`.
+**Solution:** replaced the coerce with an explicit string→bool schema:
+```ts
+cacheEnabled: z
+  .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+  .default(true)
+  .transform((v) => v === true || v === "true" || v === "1"),
+```
+**Lesson:** `z.coerce.boolean()` is a footgun for env-var config; only `z.coerce.number()` and `z.coerce.string()` behave the way most people expect. Audit any other env-driven booleans (this project has none as of the fix).

@@ -1,5 +1,21 @@
 # Runbook
 
+## Local dev stack (no AWS)
+
+For iterating on the gateway or the benchmark harness without paying for AWS:
+
+```
+./scripts/dev-up.sh
+```
+
+Brings up postgres+pgvector, redis, and prometheus in docker, and applies the schema. The script prints the env vars needed to start the gateway locally. See `bench/results/findings.md` for the k6 harness and the numbers measured against this stack.
+
+Tear down:
+
+```
+docker compose down
+```
+
 ## First-time setup (one-time)
 
 1. Install tooling:
@@ -257,6 +273,30 @@ curl -sS -X POST http://localhost:8080/mcp \
 ### Semantic cache
 
 The gateway keeps up to `CACHE_MAX_ENTRIES` (default 500) recent `(query_embedding, results)` pairs per tenant in Redis. On each query the gateway embeds the incoming text, cosine-compares against every cached embedding, and returns the cached result if the best score is above `CACHE_THRESHOLD` (default 0.95). Cache is keyed per tenant, so tenants can never see each other's cache. Cache hits/misses are exposed as `mcp_cache_hits_total` / `mcp_cache_misses_total`.
+
+Set `CACHE_ENABLED=false` to bypass the cache entirely (useful for benchmarking or debugging).
+
+Important scope: the cache short-circuits **retrieval** (the pg vector search), not answer generation. For `ask`, a cache hit still runs `openai.chat.completions.create`. See `bench/results/findings.md` and Issue #10 in `docs/issues.md` for the measured impact and how to close the gap.
+
+### Gateway env vars
+
+Non-secret runtime knobs (all set via the Helm chart's `mcp-gateway.config` block):
+
+| Env var | Default | Notes |
+|---|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | — | User/password come from the `rag-platform-db` Secret |
+| `DB_SSL` | `true` (chart) | Set `false` for local docker postgres |
+| `REDIS_URL` | — | `redis://` or `rediss://` |
+| `OPENAI_API_KEY` | — | From the `openai-api-key` Secret |
+| `OPENAI_EMBED_MODEL` | `text-embedding-3-small` | Must produce vectors of `EMBED_DIM` length |
+| `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | Used by the `ask` tool |
+| `EMBED_DIM` | `1536` | Must match the schema's `VECTOR(N)` |
+| `CACHE_ENABLED` | `true` | `false` bypasses cache |
+| `CACHE_THRESHOLD` | `0.95` | Cosine similarity floor for a cache hit |
+| `CACHE_MAX_ENTRIES` | `500` | Entries per tenant |
+| `CACHE_TTL_SECONDS` | `3600` | TTL on the per-tenant Redis list |
+| `LISTEN_PORT` / `METRICS_PORT` | `8080` / `9090` | |
+| `LOG_LEVEL` | `info` | `trace`/`debug`/`info`/`warn`/`error` |
 
 ## Common failures
 

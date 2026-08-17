@@ -28,6 +28,10 @@ The whole thing runs inside a Kubernetes cluster on AWS (EKS). Python workers do
 | Deployment | **Helm** (Kubernetes package manager) | Only if changing how apps are deployed |
 | CI | **GitHub Actions** (YAML) | Only if changing pipelines |
 
+## Just want to poke at the gateway locally?
+
+Skip everything below and run `./scripts/dev-up.sh`. It brings up postgres+pgvector, redis, and prometheus in docker, applies the schema, and prints the env vars to start the gateway against it. Numbers measured against that stack are in `bench/results/findings.md`. The rest of this doc covers the full AWS deploy.
+
 ## Prerequisites
 
 You will need:
