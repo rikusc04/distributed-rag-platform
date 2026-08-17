@@ -58,6 +58,9 @@ charts/**/charts/
 # Local scratch
 scratch/
 tmp/
+bench/seed-output.json
+bench/results/*
+!bench/results/findings.md
 
 # Claude Code per-user settings
 .claude/
