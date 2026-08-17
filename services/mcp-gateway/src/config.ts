@@ -15,6 +15,10 @@ const ConfigSchema = z.object({
   openaiEmbedModel: z.string().default("text-embedding-3-small"),
   openaiChatModel: z.string().default("gpt-4o-mini"),
   embedDim: z.coerce.number().int().positive().default(1536),
+  cacheEnabled: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .default(true)
+    .transform((v) => v === true || v === "true" || v === "1"),
   cacheThreshold: z.coerce.number().min(0).max(1).default(0.95),
   cacheMaxEntries: z.coerce.number().int().positive().default(500),
   cacheTtlSeconds: z.coerce.number().int().positive().default(3600),
@@ -38,6 +42,7 @@ export function loadConfig(): Config {
     openaiEmbedModel: process.env.OPENAI_EMBED_MODEL,
     openaiChatModel: process.env.OPENAI_CHAT_MODEL,
     embedDim: process.env.EMBED_DIM,
+    cacheEnabled: process.env.CACHE_ENABLED ?? "true",
     cacheThreshold: process.env.CACHE_THRESHOLD,
     cacheMaxEntries: process.env.CACHE_MAX_ENTRIES,
     cacheTtlSeconds: process.env.CACHE_TTL_SECONDS,

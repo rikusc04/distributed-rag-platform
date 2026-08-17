@@ -61,12 +61,14 @@ async function embedAndSearch(
   const embedding = await deps.embedder.embed(query);
   deps.metrics.embedLatency.observe((performance.now() - embedStart) / 1000);
 
-  const cached = await deps.cache.lookup(tenantId, embedding);
-  if (cached !== null) {
-    deps.metrics.cacheHits.inc();
-    return cached.slice(0, k);
+  if (deps.cfg.cacheEnabled) {
+    const cached = await deps.cache.lookup(tenantId, embedding);
+    if (cached !== null) {
+      deps.metrics.cacheHits.inc();
+      return cached.slice(0, k);
+    }
+    deps.metrics.cacheMisses.inc();
   }
-  deps.metrics.cacheMisses.inc();
 
   const pgStart = performance.now();
   const results = await deps.db.withTenant(tenantId, async (client) => {
@@ -97,7 +99,9 @@ async function embedAndSearch(
     });
   }
 
-  await deps.cache.store(tenantId, embedding, shaped);
+  if (deps.cfg.cacheEnabled) {
+    await deps.cache.store(tenantId, embedding, shaped);
+  }
   return shaped;
 }
 

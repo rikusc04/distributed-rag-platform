@@ -13,10 +13,12 @@ config:
   dbHost: ""
   dbPort: 5432
   dbName: ""
+  dbSsl: true               # RDS requires TLS; set false only for local docker postgres
   redisUrl: ""              # redis://host:6379 (elasticache primary endpoint)
   embedModel: "text-embedding-3-small"
   chatModel: "gpt-4o-mini"
   embedDim: 1536
+  cacheEnabled: true        # set false to bypass the semantic cache (benchmarking / debugging)
   cacheThreshold: "0.95"
   cacheMaxEntries: 500
   cacheTtlSeconds: 3600

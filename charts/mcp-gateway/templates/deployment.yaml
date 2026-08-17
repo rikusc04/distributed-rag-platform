@@ -42,6 +42,8 @@ spec:
               value: {{ .Values.config.dbPort | quote }}
             - name: DB_NAME
               value: {{ required "config.dbName is required" .Values.config.dbName | quote }}
+            - name: DB_SSL
+              value: {{ .Values.config.dbSsl | quote }}
             - name: REDIS_URL
               value: {{ required "config.redisUrl is required" .Values.config.redisUrl | quote }}
             - name: OPENAI_EMBED_MODEL
@@ -50,6 +52,8 @@ spec:
               value: {{ .Values.config.chatModel | quote }}
             - name: EMBED_DIM
               value: {{ .Values.config.embedDim | quote }}
+            - name: CACHE_ENABLED
+              value: {{ .Values.config.cacheEnabled | quote }}
             - name: CACHE_THRESHOLD
               value: {{ .Values.config.cacheThreshold | quote }}
             - name: CACHE_MAX_ENTRIES

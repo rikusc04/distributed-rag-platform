@@ -43,4 +43,20 @@ describe("loadConfig", () => {
     Object.assign(process.env, REQUIRED, { REDIS_URL: "not-a-url" });
     expect(() => loadConfig()).toThrow(/invalid config/);
   });
+
+  it("cacheEnabled defaults to true when CACHE_ENABLED is unset", () => {
+    Object.assign(process.env, REQUIRED);
+    delete process.env.CACHE_ENABLED;
+    expect(loadConfig().cacheEnabled).toBe(true);
+  });
+
+  it('cacheEnabled parses "false" as false (regression: z.coerce.boolean would return true)', () => {
+    Object.assign(process.env, REQUIRED, { CACHE_ENABLED: "false" });
+    expect(loadConfig().cacheEnabled).toBe(false);
+  });
+
+  it('cacheEnabled parses "true" as true', () => {
+    Object.assign(process.env, REQUIRED, { CACHE_ENABLED: "true" });
+    expect(loadConfig().cacheEnabled).toBe(true);
+  });
 });

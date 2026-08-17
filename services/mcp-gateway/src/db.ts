@@ -23,7 +23,7 @@ export async function makeDb(cfg: Config): Promise<Db> {
     user: cfg.dbUser,
     password: cfg.dbPassword,
     max: 10,
-    ssl: { rejectUnauthorized: false },
+    ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
   });
 
   pool.on("connect", async (client) => {

@@ -29,6 +29,7 @@ mcp-gateway:
     dbHost: "<POSTGRES_HOST>"
     dbPort: 5432
     dbName: "<POSTGRES_DB_NAME>"
+    dbSsl: true                                  # RDS enforces TLS
     redisUrl: "rediss://<REDIS_ENDPOINT>:6379"   # ElastiCache with TLS-in-transit
   ingress:
     enabled: true
