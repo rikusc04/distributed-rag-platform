@@ -4,13 +4,14 @@
 import { Redis } from "ioredis";
 import OpenAI from "openai";
 
-import { SemanticCache } from "./cache.js";
+import { SearchResult, SemanticCache } from "./cache.js";
 import { loadConfig } from "./config.js";
 import { makeDb } from "./db.js";
 import { Embedder } from "./embedder.js";
 import { makeLogger } from "./logger.js";
 import { Metrics } from "./metrics.js";
 import { startHttpServer, startMetricsServer } from "./server.js";
+import type { AskResult } from "./tools.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -19,16 +20,23 @@ async function main(): Promise<void> {
 
   const db = await makeDb(cfg);
   const redis = new Redis(cfg.redisUrl);
-  const cache = new SemanticCache(
+  const cache = new SemanticCache<SearchResult[]>(
     redis,
     cfg.cacheThreshold,
     cfg.cacheMaxEntries,
     cfg.cacheTtlSeconds,
   );
+  const answerCache = new SemanticCache<AskResult>(
+    redis,
+    cfg.cacheThreshold,
+    cfg.cacheMaxEntries,
+    cfg.cacheTtlSeconds,
+    "q-cache-ans",
+  );
   const embedder = new Embedder(cfg.openaiApiKey, cfg.openaiEmbedModel, cfg.embedDim);
   const openai = new OpenAI({ apiKey: cfg.openaiApiKey });
 
-  const deps = { cfg, db, embedder, cache, metrics, openai };
+  const deps = { cfg, db, embedder, cache, answerCache, metrics, openai };
 
   const metricsServer = startMetricsServer(metrics, logger, cfg.metricsPort);
   const httpServer = await startHttpServer(deps, logger, metrics, cfg.listenPort);

@@ -1,13 +1,15 @@
-// Redis-backed semantic query cache.
+// Redis-backed semantic cache.
 //
-// Each tenant has a capped list of recent (query_embedding, result_json)
-// pairs. On lookup we fetch the whole list and pick the best cosine match
-// above `threshold`. This is O(N) per lookup but N is small (default 500)
-// and each entry is ~10KB, so it fits comfortably in memory and stays well
-// under Redis roundtrip budgets.
+// Each tenant has a capped list of recent (query_embedding, payload) pairs.
+// On lookup we fetch the whole list and pick the best cosine match above
+// `threshold`. This is O(N) per lookup but N is small (default 500) and each
+// entry is ~10KB, so it fits comfortably in memory and stays well under Redis
+// roundtrip budgets.
 //
-// The cosine + top-pick function is a pure function of arrays; unit tests
-// cover it without needing a real Redis.
+// The class is generic in the payload type so it can back both the chunk
+// cache used by `search` and the answer cache used by `ask` — same shape,
+// different Redis key namespace. The cosine + top-pick function is a pure
+// function of arrays; unit tests cover it without needing a real Redis.
 
 import { Redis } from "ioredis";
 
@@ -19,9 +21,11 @@ export interface SearchResult {
   score: number;
 }
 
-interface CacheEntry {
+// Field is named `results` for backwards compatibility with entries written
+// before this class went generic. Conceptually it holds a payload of type T.
+interface CacheEntry<T> {
   embedding: number[];
-  results: SearchResult[];
+  results: T;
 }
 
 export function cosine(a: number[], b: number[]): number {
@@ -45,12 +49,12 @@ export function cosine(a: number[], b: number[]): number {
   return dot / denom;
 }
 
-export function pickBestMatch(
+export function pickBestMatch<T>(
   queryEmbedding: number[],
-  entries: CacheEntry[],
+  entries: CacheEntry<T>[],
   threshold: number,
-): { entry: CacheEntry; score: number } | null {
-  let best: { entry: CacheEntry; score: number } | null = null;
+): { entry: CacheEntry<T>; score: number } | null {
+  let best: { entry: CacheEntry<T>; score: number } | null = null;
   for (const entry of entries) {
     const score = cosine(queryEmbedding, entry.embedding);
     if (score < threshold) {
@@ -63,29 +67,37 @@ export function pickBestMatch(
   return best;
 }
 
-export class SemanticCache {
+export class SemanticCache<T> {
   private readonly redis: Redis;
   private readonly threshold: number;
   private readonly maxEntries: number;
   private readonly ttlSeconds: number;
+  private readonly keyPrefix: string;
 
-  constructor(redis: Redis, threshold: number, maxEntries: number, ttlSeconds: number) {
+  constructor(
+    redis: Redis,
+    threshold: number,
+    maxEntries: number,
+    ttlSeconds: number,
+    keyPrefix = "q-cache",
+  ) {
     this.redis = redis;
     this.threshold = threshold;
     this.maxEntries = maxEntries;
     this.ttlSeconds = ttlSeconds;
+    this.keyPrefix = keyPrefix;
   }
 
   private key(tenantId: string): string {
-    return `q-cache:${tenantId}`;
+    return `${this.keyPrefix}:${tenantId}`;
   }
 
-  async lookup(tenantId: string, embedding: number[]): Promise<SearchResult[] | null> {
+  async lookup(tenantId: string, embedding: number[]): Promise<T | null> {
     const raw = await this.redis.lrange(this.key(tenantId), 0, -1);
-    const entries: CacheEntry[] = [];
+    const entries: CacheEntry<T>[] = [];
     for (const item of raw) {
       try {
-        entries.push(JSON.parse(item) as CacheEntry);
+        entries.push(JSON.parse(item) as CacheEntry<T>);
       } catch {
         // Corrupt entry — skip. Old-format entries will get evicted naturally
         // via LTRIM on subsequent writes.
@@ -98,18 +110,14 @@ export class SemanticCache {
     return best.entry.results;
   }
 
-  async store(
-    tenantId: string,
-    embedding: number[],
-    results: SearchResult[],
-  ): Promise<void> {
-    const entry: CacheEntry = { embedding, results };
-    const payload = JSON.stringify(entry);
+  async store(tenantId: string, embedding: number[], payload: T): Promise<void> {
+    const entry: CacheEntry<T> = { embedding, results: payload };
+    const serialized = JSON.stringify(entry);
     const key = this.key(tenantId);
     // LPUSH new, LTRIM to the cap, refresh the TTL.
     await this.redis
       .multi()
-      .lpush(key, payload)
+      .lpush(key, serialized)
       .ltrim(key, 0, this.maxEntries - 1)
       .expire(key, this.ttlSeconds)
       .exec();

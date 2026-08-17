@@ -64,7 +64,7 @@ docs/               # Architecture, runbook
 - **Infrastructure as code:** every AWS resource (VPC, EKS, RDS, ElastiCache, S3, SQS, ECR, IAM) is provisioned by Terraform. Two-step bootstrap; single `terraform apply` brings the environment up.
 - **Autoscaled ingestion:** KEDA scales Python workers 0→N based on SQS queue depth. Uploads land in S3 → notification triggers SQS → workers chunk, embed, and upsert to pgvector.
 - **Multi-tenant MCP gateway:** TypeScript server exposes `search`, `ask`, `list_sources` over the standard MCP protocol. API-key auth, per-tenant rate limiting, tenant isolation enforced by Postgres row-level security.
-- **Semantic caching:** Redis-backed embedding-similarity cache in front of the pgvector retrieval step, deduplicating paraphrased queries and reducing DB load. See [`bench/results/findings.md`](bench/results/findings.md) for the measured hit rate and the caveat about LLM cost savings on `ask`.
+- **Semantic caching:** Redis-backed embedding-similarity cache with two layers — a chunk cache in front of pgvector retrieval, and an answer cache in front of the `ask` tool's LLM call. On a paraphrase-heavy benchmark this cuts `ask` p95 from 1260 ms to 285 ms and avoids ~99.65% of `gpt-4o-mini` completions. See [`bench/results/findings.md`](bench/results/findings.md) for methodology, numbers, and design notes.
 - **Observability:** Prometheus metrics, three Grafana dashboards (ingestion / query / cluster), OpenTelemetry traces to Tempo.
 - **CI/CD:** GitHub Actions runs lint + typecheck + tests on every push, builds container images to ECR, and deploys via `terraform apply` + `helm upgrade`.
 - **Cost controls:** per-tenant LLM cost meter, SNS budget alerts, ECR lifecycle policy.

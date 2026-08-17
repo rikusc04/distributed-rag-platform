@@ -10,6 +10,8 @@ export class Metrics {
   readonly queryLatency: Histogram<"tool">;
   readonly cacheHits: Counter<string>;
   readonly cacheMisses: Counter<string>;
+  readonly answerCacheHits: Counter<string>;
+  readonly answerCacheMisses: Counter<string>;
   readonly embedLatency: Histogram<string>;
   readonly pgLatency: Histogram<"op">;
   readonly authFailures: Counter<"reason">;
@@ -42,6 +44,18 @@ export class Metrics {
     this.cacheMisses = new Counter({
       name: "mcp_cache_misses_total",
       help: "Query cache misses (no stored embedding above threshold)",
+      registers: [this.registry],
+    });
+
+    this.answerCacheHits = new Counter({
+      name: "mcp_answer_cache_hits_total",
+      help: "Ask answer-cache hits — a stored answer was returned and the chat completion was skipped",
+      registers: [this.registry],
+    });
+
+    this.answerCacheMisses = new Counter({
+      name: "mcp_answer_cache_misses_total",
+      help: "Ask answer-cache misses — the chat completion had to run",
       registers: [this.registry],
     });
 

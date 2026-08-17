@@ -45,4 +45,15 @@ describe("pickBestMatch", () => {
     expect(best).not.toBeNull();
     expect(best!.score).toBeCloseTo(1, 6);
   });
+
+  it("is generic in the payload type — works for arbitrary shapes", () => {
+    const askEntry = { embedding: [1, 0, 0], results: { answer: "42", citations: [] } };
+    const best = pickBestMatch<{ answer: string; citations: unknown[] }>(
+      [1, 0, 0],
+      [askEntry],
+      0.9,
+    );
+    expect(best).not.toBeNull();
+    expect(best!.entry.results.answer).toBe("42");
+  });
 });

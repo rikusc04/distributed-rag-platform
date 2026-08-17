@@ -13,18 +13,19 @@ import type { Metrics } from "./metrics.js";
 
 export type { SearchResult };
 
+export interface AskResult {
+  answer: string;
+  citations: SearchResult[];
+}
+
 export interface ToolDeps {
   cfg: Config;
   db: Db;
   embedder: Embedder;
-  cache: SemanticCache;
+  cache: SemanticCache<SearchResult[]>;
+  answerCache: SemanticCache<AskResult>;
   metrics: Metrics;
   openai: OpenAI;
-}
-
-export interface AskResult {
-  answer: string;
-  citations: SearchResult[];
 }
 
 export interface Source {
@@ -51,16 +52,12 @@ async function timed<T>(
   }
 }
 
-async function embedAndSearch(
+async function searchWithEmbedding(
   deps: ToolDeps,
   tenantId: string,
-  query: string,
+  embedding: number[],
   k: number,
 ): Promise<SearchResult[]> {
-  const embedStart = performance.now();
-  const embedding = await deps.embedder.embed(query);
-  deps.metrics.embedLatency.observe((performance.now() - embedStart) / 1000);
-
   if (deps.cfg.cacheEnabled) {
     const cached = await deps.cache.lookup(tenantId, embedding);
     if (cached !== null) {
@@ -105,6 +102,18 @@ async function embedAndSearch(
   return shaped;
 }
 
+async function embedAndSearch(
+  deps: ToolDeps,
+  tenantId: string,
+  query: string,
+  k: number,
+): Promise<SearchResult[]> {
+  const embedStart = performance.now();
+  const embedding = await deps.embedder.embed(query);
+  deps.metrics.embedLatency.observe((performance.now() - embedStart) / 1000);
+  return searchWithEmbedding(deps, tenantId, embedding, k);
+}
+
 export function search(
   deps: ToolDeps,
   tenantId: string,
@@ -137,7 +146,21 @@ export function ask(
   k: number,
 ): Promise<AskResult> {
   return timed(deps, "ask", async () => {
-    const citations = await embedAndSearch(deps, tenantId, question, k);
+    // Embed once; used to key both cache lookups and, on miss, retrieval.
+    const embedStart = performance.now();
+    const embedding = await deps.embedder.embed(question);
+    deps.metrics.embedLatency.observe((performance.now() - embedStart) / 1000);
+
+    if (deps.cfg.cacheEnabled) {
+      const cachedAnswer = await deps.answerCache.lookup(tenantId, embedding);
+      if (cachedAnswer !== null) {
+        deps.metrics.answerCacheHits.inc();
+        return cachedAnswer;
+      }
+      deps.metrics.answerCacheMisses.inc();
+    }
+
+    const citations = await searchWithEmbedding(deps, tenantId, embedding, k);
     if (citations.length === 0) {
       return { answer: "No indexed context matches this question yet.", citations: [] };
     }
@@ -155,7 +178,14 @@ export function ask(
     });
 
     const answer = completion.choices[0]?.message?.content ?? "";
-    return { answer, citations };
+    const result: AskResult = { answer, citations };
+
+    if (deps.cfg.cacheEnabled) {
+      // Not invalidated on new document ingest — relies on cacheTtlSeconds
+      // (default 1h) for eventual freshness, same as the chunk cache.
+      await deps.answerCache.store(tenantId, embedding, result);
+    }
+    return result;
   });
 }
 
