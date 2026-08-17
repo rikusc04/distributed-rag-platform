@@ -276,7 +276,7 @@ The gateway keeps up to `CACHE_MAX_ENTRIES` (default 500) recent `(query_embeddi
 
 Set `CACHE_ENABLED=false` to bypass the cache entirely (useful for benchmarking or debugging).
 
-Two Redis key namespaces: `q-cache:<tenant>` for chunk retrieval hits (used by `search` and by `ask` on the retrieval step), and `q-cache-ans:<tenant>` for full `ask` answers `{answer, citations}`. On a `q-cache-ans` hit, `ask` skips both pgvector retrieval and the chat completion — only the query embedding still runs. Measured impact: `ask` p95 1260 ms → 285 ms and ~99.65% of chat completions skipped on a warm workload; see `bench/results/findings.md`. Neither cache is invalidated on new-document ingest — freshness is bounded by `CACHE_TTL_SECONDS`.
+Two Redis key namespaces: `q-cache:<tenant>` for chunk retrieval hits (used by `search` and by `ask` on the retrieval step), and `q-cache-ans:<tenant>` for full `ask` answers `{answer, citations}`. On a `q-cache-ans` hit, `ask` skips both pgvector retrieval and the chat completion — only the query embedding still runs. Measured impact: `ask` p95 1266 ms → 285 ms and ~99.65% of chat completions skipped on a warm workload; see `bench/results/findings.md`. Neither cache is invalidated on new-document ingest — freshness is bounded by `CACHE_TTL_SECONDS`.
 
 ### Gateway env vars
 

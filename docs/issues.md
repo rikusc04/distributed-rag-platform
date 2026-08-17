@@ -158,7 +158,7 @@ Then update `infra/modules/rds/variables.tf` default to a real version (used `16
 **When:** local benchmark of the MCP gateway (`bench/results/findings.md`)
 **Symptom:** With cache hit rate at ~99% on paraphrase workloads, `ask` p95 stayed at ~1.6 s and per-query LLM cost was unchanged.
 **Cause:** `services/mcp-gateway/src/tools.ts` `ask()` called `openai.chat.completions.create` on every request. The `SemanticCache` in `cache.ts` only cached the retrieved chunk list, not the final answer. So a cache hit short-circuited the ~2 ms pg vector search but still paid for the ~1 s chat completion.
-**Resolution:** made `SemanticCache<T>` generic and instantiated a second one (`answerCache`) under the `q-cache-ans:` Redis key prefix that stores full `{answer, citations}` payloads. `ask()` checks it first; on hit it skips both retrieval and the chat call. Result: p95 1260 ms → 285 ms and ~99.65% of chat completions skipped on the warm benchmark. Not invalidated on new-document ingest; relies on `CACHE_TTL_SECONDS` (default 1 h) same as the chunk cache.
+**Resolution:** made `SemanticCache<T>` generic and instantiated a second one (`answerCache`) under the `q-cache-ans:` Redis key prefix that stores full `{answer, citations}` payloads. `ask()` checks it first; on hit it skips both retrieval and the chat call. Result: p95 1266 ms → 285 ms and ~99.65% of chat completions skipped on the warm benchmark. Not invalidated on new-document ingest; relies on `CACHE_TTL_SECONDS` (default 1 h) same as the chunk cache.
 
 ---
 

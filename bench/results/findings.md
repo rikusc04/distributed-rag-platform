@@ -26,7 +26,7 @@ Raw artifacts in this directory (gitignored — the write-up above is the durabl
 |------------------------------------------------|-----|-------|--------|------------|--------|------------------------------------|
 | `search`, cache ON, paraphrase workload        | 10  | 2,679 | 195 ms | **331 ms** | 2.8 s  | 2646 chunk-hits / 34 miss (98.7%)  |
 | `search`, cache OFF, same workload             | 10  | 2,488 | 203 ms | **344 ms** | 3.6 s  | 0 hits / 0 miss (bypassed)         |
-| `ask`, cache OFF, warm workload                | 5   | 334   | 859 ms | **1260 ms**| 2.0 s  | 0 hits / 0 miss (bypassed)         |
+| `ask`, cache OFF, warm workload                | 5   | 334   | 859 ms | **1266 ms**| 2.0 s  | 0 hits / 0 miss (bypassed)         |
 | `ask`, cache ON with **answer cache**, warm    | 5   | 1,446 | 186 ms | **285 ms** | 2.1 s  | 1441 answer-hits / 5 miss (99.65%) |
 
 Percentiles above are k6 client-side (`http_req_duration`). Server-side histograms in `*-metrics.txt` agree within bucket resolution.
@@ -36,7 +36,7 @@ Percentiles above are k6 client-side (`http_req_duration`). Server-side histogra
 **Search p95 ≈ 335 ms; the cache moves it by only ~13 ms.**
 Cache ON vs cache OFF: 331 ms vs 344 ms — real but small (about 4%). On `search`, embed (~150–200 ms of network round-trip to OpenAI) always runs. The cache only short-circuits the pg query, which is ~2 ms because HNSW on 200 rows is trivial. The cache offloads the DB, but the end-to-end latency win is bounded by how small the pg step already is.
 
-**Ask p95 dropped from 1260 ms → 285 ms once the answer cache was wired in.**
+**Ask p95 dropped from 1266 ms → 285 ms once the answer cache was wired in.**
 Baseline (`ask` with cache OFF) pays ~150–200 ms embed + ~2 ms pg + ~700–1000 ms chat completion, so p95 sits at ~1.3 s. After adding a second `SemanticCache<AskResult>` under the `q-cache-ans:` Redis namespace and checking it before the chat call, cache-hit `ask` skips both retrieval and the chat completion — only embedding remains — and p95 drops to ~285 ms. That's a **~77% cut in p95** at the same VUs, and throughput went from 5.5 → 24 RPS.
 
 **Cost savings from the answer cache on this workload: ~99.65%.**
